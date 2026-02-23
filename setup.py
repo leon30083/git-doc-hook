@@ -17,13 +17,12 @@ setup(
     package_dir={"": "src"},
     entry_points={
         "console_scripts": [
-            "git-doc-hook=cli:main",
+            "git-doc-hook=git_doc_hook.cli:main",
         ],
     },
     install_requires=[
         "pyyaml>=6.0",
         "click>=8.0",
-        "requests>=2.28",
         "jinja2>=3.1",
     ],
     extras_require={

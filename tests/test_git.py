@@ -1,7 +1,7 @@
 """Tests for Git operations"""
 import pytest
 from pathlib import Path
-from core.git import GitManager, GitError, Commit, FileChange, DiffResult
+from git_doc_hook.core.git import GitManager, GitError, Commit, FileChange, DiffResult
 
 
 @pytest.fixture

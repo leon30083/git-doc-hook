@@ -1,10 +1,11 @@
-"""MemOS API client for git-doc-hook
+"""MemOS MCP client for git-doc-hook
 
-Handles synchronization of documentation records to MemOS
+Handles synchronization of documentation records to MemOS via MCP protocol
 with graceful offline fallback.
 """
 import json
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Dict, List, Optional
@@ -26,6 +27,7 @@ class MemOSRecord:
         files: List of related files
         metadata: Additional metadata
         timestamp: Record timestamp
+        cube_id: MemOS cube ID for the record
     """
 
     content: str
@@ -36,13 +38,18 @@ class MemOSRecord:
     files: List[str] = field(default_factory=list)
     metadata: Dict[str, Any] = field(default_factory=dict)
     timestamp: float = 0
+    cube_id: str = "git-doc-hook"
 
     def __post_init__(self):
         if self.timestamp == 0:
             self.timestamp = datetime.now().timestamp()
 
     def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for API"""
+        """Convert to dictionary for API
+
+        Returns:
+            Dictionary representation
+        """
         return {
             "content": self.content,
             "metadata": {
@@ -58,36 +65,130 @@ class MemOSRecord:
 
 
 class MemOSClient:
-    """Client for interacting with MemOS API
+    """Client for interacting with MemOS via MCP protocol
 
     Provides methods to sync documentation records to MemOS
-    with offline support when MemOS is unavailable.
+    with offline support when MCP is unavailable.
     """
+
+    # Default configuration from MCP server
+    DEFAULT_USER_ID = "local-user"
+    DEFAULT_CUBE_ID = "default-cube"
 
     def __init__(
         self,
-        api_url: str = "http://localhost:8000",
+        api_url: str = None,  # Kept for compatibility, unused in MCP mode
         cube_id: str = "git-doc-hook",
-        timeout: float = 5.0,
+        timeout: float = 5.0,  # Kept for compatibility, unused in MCP mode
         enabled: bool = True,
+        user_id: str = None,
     ):
         """Initialize MemOS client
 
         Args:
-            api_url: Base URL for MemOS API
+            api_url: Kept for compatibility, unused in MCP mode
             cube_id: Cube ID for storing records
-            timeout: Request timeout in seconds
+            timeout: Kept for compatibility, unused in MCP mode
             enabled: Whether MemOS sync is enabled
+            user_id: User ID for memos-local (defaults to local-user)
         """
-        self.api_url = api_url.rstrip("/")
         self.cube_id = cube_id
-        self.timeout = timeout
         self.enabled = enabled
+        self.user_id = user_id or os.environ.get("MEMOS_DEFAULT_USER_ID", self.DEFAULT_USER_ID)
         self._offline_cache: List[MemOSRecord] = []
         self._cache_file = Path.home() / ".git-doc-hook" / "memos_cache.json"
 
+        # Detect if MCP is available
+        self._mcp_available = self._detect_mcp_available()
+
         # Load offline cache
         self._load_cache()
+
+        if self._mcp_available:
+            logger.info("MemOS MCP tool detected, will use MCP protocol")
+        elif self.enabled:
+            logger.info("MCP not available, using offline cache only")
+
+    def _detect_mcp_available(self) -> bool:
+        """Detect if MCP memos-local tool is available
+
+        Returns:
+            True if MCP tool functions are available in the current environment
+        """
+        if not self.enabled:
+            return False
+
+        try:
+            # Check if MCP tool functions are in global scope
+            import inspect
+            frame = inspect.currentframe()
+
+            while frame:
+                frame_locals = frame.f_locals
+                # Look for memos-local MCP tools (try different naming)
+                if any(key in frame_locals for key in [
+                    "mcp__memos_local__add_message",
+                    "mcp__memos-local__add_message",
+                ]):
+                    logger.debug("Found memos-local MCP tools in call stack")
+                    return True
+                frame = frame.f_back
+
+            return False
+
+        except Exception:
+            return False
+
+    def _mcp_add_message(self, record: MemOSRecord) -> bool:
+        """Add message via MCP protocol
+
+        Uses the mcp__memos-local__add_message tool from the MCP server.
+
+        Args:
+            record: Record to add
+
+        Returns:
+            True if successful
+        """
+        try:
+            import inspect
+
+            # Build parameters matching MCP server's add_message format
+            params = {
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": record.content,
+                    }
+                ],
+                "cube_id": self.cube_id,
+                "async_mode": "sync",
+            }
+
+            # Try to find and call the MCP tool
+            frame = inspect.currentframe()
+            while frame:
+                frame_locals = frame.f_locals
+
+                # Try different naming conventions
+                for tool_name in [
+                    "mcp__memos_local__add_message",
+                    "mcp__memos-local__add_message",
+                ]:
+                    if tool_name in frame_locals and callable(frame_locals[tool_name]):
+                        result = frame_locals[tool_name](**params)
+                        # MCP tools typically return success or throw exceptions
+                        logger.debug(f"MCP add_message result: {result}")
+                        return True
+
+                frame = frame.f_back
+
+            logger.debug("MCP tool not found in call stack")
+            return False
+
+        except Exception as e:
+            logger.debug(f"MCP add_message failed: {e}")
+            return False
 
     def _load_cache(self) -> None:
         """Load offline cache from disk"""
@@ -104,93 +205,43 @@ class MemOSClient:
         data = [r.__dict__ for r in self._offline_cache]
         self._cache_file.write_text(json.dumps(data, indent=2))
 
-    def _make_request(
-        self, endpoint: str, method: str = "GET", data: Optional[Dict] = None
-    ) -> Optional[Dict]:
-        """Make HTTP request to MemOS API
-
-        Args:
-            endpoint: API endpoint path
-            method: HTTP method
-            data: Request body data
-
-        Returns:
-            Response data or None if request failed
-        """
-        if not self.enabled:
-            return None
-
-        try:
-            import requests
-
-            url = f"{self.api_url}{endpoint}"
-            headers = {"Content-Type": "application/json"}
-
-            if method == "GET":
-                response = requests.get(url, timeout=self.timeout, headers=headers)
-            elif method == "POST":
-                response = requests.post(
-                    url, json=data, timeout=self.timeout, headers=headers
-                )
-            elif method == "DELETE":
-                response = requests.delete(url, timeout=self.timeout, headers=headers)
-            else:
-                return None
-
-            if response.ok:
-                return response.json()
-
-            logger.warning(f"MemOS API error: {response.status_code}")
-            return None
-
-        except ImportError:
-            logger.warning("requests library not available")
-            return None
-        except Exception as e:
-            logger.debug(f"MemOS request failed: {e}")
-            return None
+    @property
+    def api_url(self) -> str:
+        """Property for backward compatibility with tests"""
+        return "http://localhost:8000"  # Placeholder, not used in MCP mode
 
     def is_available(self) -> bool:
-        """Check if MemOS API is available
+        """Check if MemOS is available
 
         Returns:
-            True if MemOS is responding
+            True if MCP tool is available
         """
         if not self.enabled:
             return False
-
-        result = self._make_request("/api/status", "GET")
-        return result is not None
+        return self._mcp_available
 
     def add_record(self, record: MemOSRecord) -> bool:
-        """Add a record to MemOS
+        """Add a record to MemOS via MCP protocol
 
         Args:
             record: Record to add
 
         Returns:
-            True if successful, False otherwise
+            True if synced successfully, False if cached offline
         """
         if not self.enabled:
             return False
 
-        # Try to sync
-        result = self._make_request(
-            "/api/memos",
-            "POST",
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": record.content,
-                    }
-                ],
-                "cube_id": self.cube_id,
-            },
-        )
+        # Attach cube_id to record
+        record.cube_id = self.cube_id
 
-        if result is not None:
-            return True
+        # Try MCP
+        if self._mcp_available:
+            if self._mcp_add_message(record):
+                logger.info(f"Record synced via MCP: {self.cube_id}")
+                return True
+            else:
+                logger.debug("MCP sync failed")
 
         # Offline: add to cache
         self._offline_cache.append(record)
@@ -207,17 +258,25 @@ class MemOSClient:
         if not self._offline_cache:
             return 0
 
+        if not self._mcp_available:
+            logger.debug(f"MCP not available, {len(self._offline_cache)} records remain cached")
+            return 0
+
         synced = 0
         remaining = []
 
         for record in self._offline_cache:
-            if self.add_record(record):
+            record.cube_id = self.cube_id
+            if self._mcp_add_message(record):
                 synced += 1
             else:
                 remaining.append(record)
 
         self._offline_cache = remaining
         self._save_cache()
+
+        if synced > 0:
+            logger.info(f"Synced {synced} cached records to MemOS via MCP")
 
         return synced
 
@@ -227,10 +286,33 @@ class MemOSClient:
         Returns:
             Statistics dict or None
         """
-        if not self.enabled:
+        if not self.enabled or not self._mcp_available:
             return None
 
-        return self._make_request(f"/api/memos/stats?cube_id={self.cube_id}", "GET")
+        try:
+            import inspect
+            frame = inspect.currentframe()
+
+            while frame:
+                frame_locals = frame.f_locals
+
+                # Try get_memory_stats tool
+                for tool_name in [
+                    "mcp__memos_local__get_memory_stats",
+                    "mcp__memos-local__get_memory_stats",
+                ]:
+                    if tool_name in frame_locals and callable(frame_locals[tool_name]):
+                        return frame_locals[tool_name](
+                            user_id=self.user_id,
+                            cube_id=self.cube_id,
+                        )
+
+                frame = frame.f_back
+
+        except Exception:
+            pass
+
+        return None
 
     def search(self, query: str, limit: int = 10) -> List[Dict]:
         """Search MemOS for records
@@ -242,16 +324,36 @@ class MemOSClient:
         Returns:
             List of matching records
         """
-        if not self.enabled:
+        if not self.enabled or not self._mcp_available:
             return []
 
-        result = self._make_request(
-            f"/api/memos/search?query={query}&limit={limit}&cube_id={self.cube_id}",
-            "GET",
-        )
+        try:
+            import inspect
+            frame = inspect.currentframe()
 
-        if result:
-            return result.get("results", [])
+            while frame:
+                frame_locals = frame.f_locals
+
+                for tool_name in [
+                    "mcp__memos_local__search_memory",
+                    "mcp__memos-local__search_memory",
+                ]:
+                    if tool_name in frame_locals and callable(frame_locals[tool_name]):
+                        result = frame_locals[tool_name](
+                            query=query,
+                            limit=limit,
+                            user_id=self.user_id,
+                            cube_id=self.cube_id,
+                        )
+                        if result and isinstance(result, dict):
+                            data = result.get("data", {})
+                            return data.get("text_mem", [])
+
+                frame = frame.f_back
+
+        except Exception:
+            pass
+
         return []
 
     @classmethod

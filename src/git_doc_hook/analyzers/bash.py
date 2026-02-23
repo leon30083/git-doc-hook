@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from .base import (
+from git_doc_hook.analyzers.base import (
     BaseAnalyzer,
     AnalysisResult,
     ComplexityMetrics,

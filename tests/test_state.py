@@ -3,8 +3,8 @@ import json
 import time
 import pytest
 from pathlib import Path
-from core.state import StateManager, PendingUpdate
-from core.config import Config
+from git_doc_hook.core.state import StateManager, PendingUpdate
+from git_doc_hook.core.config import Config
 
 
 @pytest.fixture

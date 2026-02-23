@@ -44,7 +44,7 @@ def isolated_git_repo(tmp_path):
 
 def test_init_workflow(isolated_git_repo):
     """Test complete initialization workflow"""
-    from cli import cli
+    from git_doc_hook.cli import cli
     from click.testing import CliRunner
 
     runner = CliRunner()
@@ -66,9 +66,9 @@ def test_init_workflow(isolated_git_repo):
 
 def test_config_loading_after_init(isolated_git_repo):
     """Test configuration loading after initialization"""
-    from cli import cli
+    from git_doc_hook.cli import cli
     from click.testing import CliRunner
-    from core.config import Config
+    from git_doc_hook.core.config import Config
 
     runner = CliRunner()
 
@@ -86,9 +86,9 @@ def test_config_loading_after_init(isolated_git_repo):
 
 def test_state_after_init(isolated_git_repo):
     """Test state management after initialization"""
-    from cli import cli
+    from git_doc_hook.cli import cli
     from click.testing import CliRunner
-    from core.state import StateManager
+    from git_doc_hook.core.state import StateManager
 
     runner = CliRunner()
 
@@ -113,11 +113,11 @@ def test_state_after_init(isolated_git_repo):
 
 def test_template_renderer(isolated_git_repo):
     """Test template rendering"""
-    from cli import cli
+    from git_doc_hook.cli import cli
     from click.testing import CliRunner
-    from template import create_renderer
-    from core.config import Config
-    from core.state import PendingUpdate
+    from git_doc_hook.template import create_renderer
+    from git_doc_hook.core.config import Config
+    from git_doc_hook.core.state import PendingUpdate
 
     runner = CliRunner()
 
@@ -146,7 +146,7 @@ def test_template_renderer(isolated_git_repo):
 
 def test_document_updater_table_row(tmp_path):
     """Test document updater table row insertion"""
-    from updaters import DocumentUpdater
+    from git_doc_hook.updaters import DocumentUpdater
 
     test_file = tmp_path / "test.md"
     test_file.write_text("""# Test
@@ -173,7 +173,7 @@ def test_document_updater_table_row(tmp_path):
 
 def test_document_updater_append_record(tmp_path):
     """Test document updater record appending"""
-    from updaters import DocumentUpdater
+    from git_doc_hook.updaters import DocumentUpdater
 
     test_file = tmp_path / "test.md"
     test_file.write_text("# Test\n")
@@ -192,7 +192,7 @@ def test_document_updater_append_record(tmp_path):
 
 def test_document_updater_update_section(tmp_path):
     """Test document updater section replacement"""
-    from updaters import DocumentUpdater
+    from git_doc_hook.updaters import DocumentUpdater
 
     test_file = tmp_path / "test.md"
     test_file.write_text("""# Test
@@ -220,7 +220,7 @@ Old content
 
 def test_document_updater_prepend_content(tmp_path):
     """Test document updater content prepending"""
-    from updaters import DocumentUpdater
+    from git_doc_hook.updaters import DocumentUpdater
 
     test_file = tmp_path / "test.md"
     test_file.write_text("# Test\n\nExisting content")
@@ -239,7 +239,7 @@ def test_document_updater_prepend_content(tmp_path):
 
 def test_document_updater_dry_run(tmp_path):
     """Test document updater dry-run mode"""
-    from updaters import DocumentUpdater
+    from git_doc_hook.updaters import DocumentUpdater
 
     test_file = tmp_path / "test.md"
     original_content = "# Test\n"
@@ -259,7 +259,7 @@ def test_document_updater_dry_run(tmp_path):
 
 def test_config_file_updater(tmp_path):
     """Test config file updater"""
-    from updaters import ConfigFileUpdater
+    from git_doc_hook.updaters import ConfigFileUpdater
 
     project = tmp_path / "project"
     project.mkdir()
@@ -282,7 +282,7 @@ def test_config_file_updater(tmp_path):
 
 def test_extract_code_patterns(tmp_path):
     """Test code pattern extraction"""
-    from updaters import extract_code_patterns
+    from git_doc_hook.updaters import extract_code_patterns
 
     # Create test files
     services_dir = tmp_path / "services"
@@ -302,9 +302,9 @@ def test_extract_code_patterns(tmp_path):
 
 def test_end_to_end_workflow(isolated_git_repo):
     """Test complete end-to-end workflow"""
-    from cli import cli
+    from git_doc_hook.cli import cli
     from click.testing import CliRunner
-    from core.state import StateManager
+    from git_doc_hook.core.state import StateManager
 
     runner = CliRunner()
 
@@ -357,7 +357,7 @@ def test_end_to_end_workflow(isolated_git_repo):
 
 def test_analyzer_detection(isolated_git_repo):
     """Test code analyzer detection"""
-    from analyzers import get_analyzer
+    from git_doc_hook.analyzers import get_analyzer
 
     # Create test files
     (isolated_git_repo / "test.py").write_text("print('test')")
@@ -379,9 +379,9 @@ def test_analyzer_detection(isolated_git_repo):
 
 def test_config_validation(isolated_git_repo):
     """Test configuration validation"""
-    from cli import cli
+    from git_doc_hook.cli import cli
     from click.testing import CliRunner
-    from core.config import Config
+    from git_doc_hook.core.config import Config
 
     runner = CliRunner()
 

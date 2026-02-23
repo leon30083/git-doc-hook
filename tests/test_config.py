@@ -2,7 +2,7 @@
 import json
 import pytest
 from pathlib import Path
-from core.config import Config
+from git_doc_hook.core.config import Config
 
 
 @pytest.fixture

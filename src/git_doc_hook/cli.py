@@ -23,11 +23,13 @@ except ImportError:
     print("Error: pyyaml is required. Install with: pip install pyyaml")
     sys.exit(1)
 
-from core.config import Config
-from core.git import GitManager, GitError
-from core.state import StateManager
-from memos.client import MemOSClient, MemOSRecord
-from analyzers import get_analyzer
+from git_doc_hook.core.config import Config
+from git_doc_hook.core.git import GitManager, GitError
+from git_doc_hook.core.state import StateManager
+from git_doc_hook.memos.client import MemOSClient, MemOSRecord
+from git_doc_hook.analyzers import get_analyzer
+from git_doc_hook.template import create_renderer
+from git_doc_hook.updaters import DocumentUpdater, ConfigFileUpdater, extract_code_patterns
 
 
 @click.group()

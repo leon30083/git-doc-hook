@@ -3,7 +3,7 @@
 Provides language-specific analysis for complexity detection
 and change categorization.
 """
-from .base import BaseAnalyzer, ComplexityMetrics, AnalysisResult
+from git_doc_hook.analyzers.base import BaseAnalyzer, ComplexityMetrics, AnalysisResult
 from .python import PythonAnalyzer
 from .javascript import JavaScriptAnalyzer
 from .bash import BashAnalyzer

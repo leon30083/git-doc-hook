@@ -1,8 +1,8 @@
 """Tests for code analyzers"""
 import pytest
 from pathlib import Path
-from analyzers import get_analyzer
-from analyzers.base import ComplexityMetrics
+from git_doc_hook.analyzers import get_analyzer
+from git_doc_hook.analyzers.base import ComplexityMetrics
 
 
 def test_get_analyzer_python():
