@@ -1,0 +1,27 @@
+# MemOS Record Template
+
+## Record Type
+{{ record_type }}
+
+## Metadata
+- **Project**: {{ project }}
+- **Commit**: {{ commit_hash }}
+- **Timestamp**: {{ timestamp }}
+- **Category**: {{ category }}
+
+## Content
+
+{{ content }}
+
+## Related Files
+{% for file in files %}
+- `{{ file }}`
+{% endfor %}
+
+## Tags
+{% for tag in tags %}
+- {{ tag }}
+{% endfor %}
+
+---
+*Synced to MemOS cube: {{ cube_id }}*

@@ -1,0 +1,95 @@
+# Git-Doc-Hook Configuration
+# Version: 1.0
+
+# State management - where pending updates are stored
+state:
+  dir: "~/.git-doc-hook"
+  project_key: null  # Auto-detected from repo name
+
+# MemOS integration - sync technical decisions and troubleshooting
+memos:
+  enabled: true
+  api_url: "http://localhost:8000"
+  cube_id: "git-doc-hook"
+  auto_sync: true
+
+  # Category mappings for automatic record creation
+  categories:
+    troubleshooting:
+      memos_type: "troubleshooting"
+      keywords: ["fix", "bug", "error", "issue", "debug"]
+    decisions:
+      memos_type: "adr"
+      keywords: ["decision", "decide", "选型", "architecture"]
+    best_practices:
+      memos_type: "practice"
+      keywords: ["refactor", "optimize", "improve", "better"]
+    security:
+      memos_type: "security"
+      keywords: ["security", "auth", "vulnerability", "xss"]
+
+# Document layers - define what gets updated
+layers:
+  traditional:
+    name: "Traditional Docs"
+    docs:
+      - "README.md"
+      - "docs/**/*.md"
+
+  config:
+    name: "Config Rules"
+    docs:
+      - ".clinerules"
+      - ".cursorrules"
+
+  memo:
+    name: "MemOS Records"
+    docs: []  # Virtual layer - syncs to MemOS instead
+
+# Rules - when to trigger updates
+rules:
+  # Service files update docs and config
+  - pattern: "services/**/*.py"
+    layers: ["traditional", "config"]
+    when:
+      - file_exists
+    actions:
+      - target: "README.md"
+        section: "Services"
+        action: "append_table_row"
+
+  # Python changes with fix/bug keywords create troubleshooting records
+  - pattern: "**/*.py"
+    layers: ["memo"]
+    when:
+      - commit_contains: ["fix", "bug"]
+    actions:
+      - target: "memos"
+        action: "sync_troubleshooting"
+
+  # Any file with decision keywords creates ADR
+  - pattern: "**/*"
+    layers: ["memo"]
+    when:
+      - commit_contains: ["decision", "选型"]
+    actions:
+      - target: "memos"
+        action: "sync_adr"
+
+# Complexity thresholds - determines when high complexity triggers updates
+complexity:
+  high_line_count: 100
+  high_nesting_depth: 4
+  high_param_count: 6
+
+# Keywords - mapped to documentation categories
+keywords:
+  troubleshooting: ["fix", "bug", "error", "issue", "debug"]
+  decisions: ["decision", "decide", "选型", "architecture"]
+  best_practices: ["refactor", "optimize", "improve", "better"]
+  security: ["security", "auth", "vulnerability"]
+
+# Commit settings
+commit:
+  message_template: "docs(auto): update {layers} - {reason}"
+  auto_push: false

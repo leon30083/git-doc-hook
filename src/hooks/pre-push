@@ -1,0 +1,16 @@
+#!/bin/bash
+# Git-Doc-Hook Pre-Push Hook
+# Installed by: git-doc-hook init
+
+# Get the project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Check if git-doc-hook is available
+if ! command -v git-doc-hook &> /dev/null; then
+    # Try to use the Python module directly
+    export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    python3 -m cli check-pre-push "$@" 2>/dev/null || true
+else
+    # Use the installed command
+    git-doc-hook check-pre-push "$@" || exit 1
+fi

@@ -1,0 +1,16 @@
+#!/bin/bash
+# Git-Doc-Hook Post-Commit Hook
+# Installed by: git-doc-hook init
+
+# Get the project root directory
+PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+
+# Check if git-doc-hook is available
+if ! command -v git-doc-hook &> /dev/null; then
+    # Try to use the Python module directly
+    export PYTHONPATH="$PROJECT_ROOT/src:$PYTHONPATH"
+    python3 -m cli check-post-commit 2>/dev/null || true
+else
+    # Use the installed command
+    git-doc-hook check-post-commit
+fi
