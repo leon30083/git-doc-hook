@@ -99,6 +99,15 @@ class Config:
             "message_template": "docs(auto): update {layers} - {reason}",
             "auto_push": False,
         },
+        "templates": {
+            "enabled": True,
+            "dir": "~/.git-doc-hook/templates",
+            "use_builtin": True,
+        },
+        "updaters": {
+            "dry_run": False,
+            "backup": True,
+        },
     }
 
     def __init__(self, project_path: str = "."):
@@ -208,6 +217,31 @@ class Config:
     def keywords(self) -> Dict[str, List[str]]:
         """Get keyword mappings"""
         return self.get("keywords", {})
+
+    @property
+    def templates_enabled(self) -> bool:
+        """Check if template rendering is enabled"""
+        return self.get("templates.enabled", True)
+
+    @property
+    def template_dir(self) -> Path:
+        """Get the template directory path"""
+        return Path(self.get("templates.dir", "~/.git-doc-hook/templates")).expanduser()
+
+    @property
+    def use_builtin_templates(self) -> bool:
+        """Check if builtin templates should be used"""
+        return self.get("templates.use_builtin", True)
+
+    @property
+    def dry_run(self) -> bool:
+        """Check if dry-run mode is enabled"""
+        return self.get("updaters.dry_run", False)
+
+    @property
+    def backup_enabled(self) -> bool:
+        """Check if backup is enabled before file updates"""
+        return self.get("updaters.backup", True)
 
     def get(self, key: str, default: Any = None) -> Any:
         """Get a configuration value by dot-notation key

@@ -1,0 +1,136 @@
+# Git-Doc-Hook Configuration
+# This file controls how git-doc-hook processes your commits and updates documentation
+
+version: "1.0"
+
+# State management settings
+state:
+  # Directory for storing state (supports ~ for home directory)
+  dir: "~/.git-doc-hook"
+  # Project identifier (defaults to repo name if not specified)
+  project_key: null
+
+# MemOS integration settings
+memos:
+  # Enable/disable MemOS synchronization
+  enabled: true
+  # MemOS API URL
+  api_url: "http://localhost:8000"
+  # MemOS cube ID for storing records
+  cube_id: "git-doc-hook"
+  # Automatically sync on commits
+  auto_sync: true
+  # Keyword-based record categorization
+  categories:
+    troubleshooting:
+      memos_type: "troubleshooting"
+      keywords: ["fix", "bug", "error", "issue", "debug"]
+    decisions:
+      memos_type: "adr"
+      keywords: ["decision", "decide", "选型", "architecture"]
+    best_practices:
+      memos_type: "practice"
+      keywords: ["refactor", "optimize", "improve", "better"]
+    security:
+      memos_type: "security"
+      keywords: ["security", "auth", "vulnerability", "xss"]
+
+# Documentation layer definitions
+layers:
+  traditional:
+    name: "Traditional Docs"
+    # Glob patterns for documentation files
+    docs: ["README.md", "docs/**/*.md"]
+  config:
+    name: "Config Rules"
+    # AI assistant configuration files
+    docs: [".clinerules", ".cursorrules"]
+  memo:
+    name: "MemOS Records"
+    # Virtual layer - no physical files
+    docs: []
+
+# Rules for matching file patterns to actions
+rules:
+  # Example: Update documentation when services are modified
+  - pattern: "services/**/*.py"
+    layers: ["traditional", "config"]
+    when: ["file_exists"]
+    actions:
+      - target: "README.md"
+        section: "Services"
+        action: "append_table_row"
+        # Optional: specify table headers
+        headers: ["Name", "Path", "Type"]
+        # Optional: map file data to columns
+        row_mapping:
+          Name: "{file}"
+          Path: "{path}"
+          Type: "{type}"
+
+  # Example: Create troubleshooting records for bug fixes
+  - pattern: "**/*.py"
+    layers: ["memo"]
+    when:
+      - {"commit_contains": ["fix", "bug"]}
+      - {"complexity_high": true}
+    actions:
+      - target: "docs/troubleshooting.md"
+        action: "append_record"
+
+  # Example: Document API changes
+  - pattern: "api/**/*.py"
+    layers: ["traditional"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/api.md"
+        section: "API Endpoints"
+        action: "append_table_row"
+
+  # Example: Update config rules for test changes
+  - pattern: "tests/**/*.py"
+    layers: ["config"]
+    when: ["file_exists"]
+    actions:
+      - target: ".clinerules"
+        action: "update_section"
+        section: "Testing"
+
+# Complexity analysis thresholds
+complexity:
+  # Lines of code threshold
+  high_line_count: 100
+  # Nesting depth threshold
+  high_nesting_depth: 4
+  # Parameter count threshold
+  high_param_count: 6
+
+# Keyword mappings for automatic detection
+keywords:
+  troubleshooting: ["fix", "bug", "error", "issue", "debug"]
+  decisions: ["decision", "decide", "选型", "architecture"]
+  best_practices: ["refactor", "optimize", "improve", "better"]
+  security: ["security", "auth", "vulnerability"]
+
+# Commit-related settings
+commit:
+  # Template for auto-generated commit messages
+  message_template: "docs(auto): update {layers} - {reason}"
+  # Automatically push after documentation update
+  auto_push: false
+
+# Template rendering settings
+templates:
+  # Enable template rendering
+  enabled: true
+  # Custom template directory (optional)
+  dir: "~/.git-doc-hook/templates"
+  # Use builtin templates as fallback
+  use_builtin: true
+
+# File update settings
+updaters:
+  # Dry-run mode (preview changes without applying)
+  dry_run: false
+  # Create backup files before modifying
+  backup: true

@@ -1,0 +1,100 @@
+# Git-Doc-Hook Configuration for JavaScript/TypeScript Projects
+# Optimized for Node.js, React, Vue projects
+
+version: "1.0"
+
+# JavaScript/TypeScript-specific rules
+rules:
+  # React components
+  - pattern: "src/components/**/*.jsx"
+    layers: ["traditional", "config"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/components.md"
+        section: "Components"
+        action: "append_table_row"
+        row_mapping:
+          Component: "{file}"
+          Path: "{path}"
+          Type: "React"
+
+  - pattern: "src/components/**/*.tsx"
+    layers: ["traditional", "config"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/components.md"
+        section: "Components"
+        action: "append_table_row"
+        row_mapping:
+          Component: "{file}"
+          Path: "{path}"
+          Type: "TypeScript"
+
+  # API routes
+  - pattern: "src/api/**/*.ts"
+    layers: ["traditional"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/api.md"
+        section: "API Routes"
+        action: "append_table_row"
+
+  # Hooks (React)
+  - pattern: "src/hooks/**/*.ts"
+    layers: ["traditional"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/hooks.md"
+        section: "Custom Hooks"
+        action: "append_table_row"
+
+  # Store/state management
+  - pattern: "src/store/**/*.ts"
+    layers: ["traditional", "config"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/state.md"
+        section: "State Management"
+        action: "append_table_row"
+
+  # Package.json updates
+  - pattern: "package.json"
+    layers: ["traditional"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/dependencies.md"
+        action: "update_section"
+        section: "Dependencies"
+
+  # TypeScript types
+  - pattern: "src/types/**/*.ts"
+    layers: ["config"]
+    when: ["file_exists"]
+    actions:
+      - target: ".clinerules"
+        section: "TypeScript Types"
+        action: "update_section"
+
+# JavaScript/TypeScript complexity thresholds
+complexity:
+  high_line_count: 120
+  high_nesting_depth: 5
+  high_param_count: 4
+
+# JavaScript keywords
+keywords:
+  troubleshooting: ["fix", "bug", "error", "exception", "debug", "undefined"]
+  decisions: ["decision", "decide", "选型", "architecture", "library"]
+  best_practices: ["refactor", "optimize", "performance", "cleanup"]
+  security: ["security", "auth", "xss", "injection", "csrf"]
+
+# MemOS categories for JavaScript
+memos:
+  enabled: true
+  categories:
+    react:
+      memos_type: "practice"
+      keywords: ["component", "hook", "effect"]
+    async:
+      memos_type: "troubleshooting"
+      keywords: ["promise", "async", "await", "callback"]

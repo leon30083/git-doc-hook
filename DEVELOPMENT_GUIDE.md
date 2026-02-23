@@ -310,24 +310,34 @@ pip install -e ".[dev]"
 ### Testing
 
 ```bash
-# Run tests (when implemented)
-pytest tests/
+# Run all tests
+pytest tests/ -v
+
+# Run with coverage
+pytest tests/ --cov=src --cov-report=html
+
+# Run specific test file
+pytest tests/test_config.py -v
+
+# Run integration tests only
+pytest tests/integration/ -v
 
 # Type checking
 mypy src/
 
-# Linting
+# Code formatting
 black src/
 ```
 
 ### Manual Testing
 
 ```bash
-# Create test project
+# Run the manual test script
+bash tests/manual_test.sh
+
+# Or create test project manually
 mkdir /tmp/test-project && cd /tmp/test-project
 git init
-
-# Initialize git-doc-hook
 git-doc-hook init
 
 # Make a test commit
@@ -387,6 +397,106 @@ class RustAnalyzer(BaseAnalyzer):
        if _update_api_docs(project_path):
            updated.append("api")
    ```
+
+### Adding Templates
+
+Templates use Jinja2 and are located in `templates/prompts/`:
+
+1. **Create a new template**:
+   ```bash
+   # Custom template location
+   mkdir -p ~/.git-doc-hook/templates
+   vim ~/.git-doc-hook/templates/custom.md.j2
+   ```
+
+2. **Template structure**:
+   ```jinja2
+   # Custom Documentation
+
+   ## Context
+   - Project: {{ project_name }}
+   - Commit: {{ commit_hash }}
+
+   ## Changes
+   {% for file in changed_files %}
+   - {{ file }}
+   {% endfor %}
+
+   ## Content
+   {{ generated_content }}
+   ```
+
+3. **Use in code**:
+   ```python
+   from template import TemplateRenderer
+
+   renderer = TemplateRenderer(
+       template_dir=Path("~/.git-doc-hook/templates").expanduser(),
+       use_builtin=True,
+   )
+
+   context = {"project_name": "myapp", ...}
+   content = renderer.render("custom.md.j2", context)
+   ```
+
+4. **Available context variables**:
+   - `project_name`: Project directory name
+   - `repo_url`: Git remote URL
+   - `branch`: Current branch name
+   - `commit_hash`: Short commit hash
+   - `commit_message`: Full commit message
+   - `changed_files`: List of changed file paths
+   - `services`: List of detected services
+   - `updates`: List of pending update actions
+   - `reason`: Reason for the update
+   - `timestamp`: ISO format timestamp
+
+### Testing Guide
+
+#### Test Structure
+
+```
+tests/
+├── __init__.py
+├── test_config.py      # Configuration tests
+├── test_state.py       # State management tests
+├── test_git.py         # Git operations tests
+├── test_memos.py       # MemOS client tests
+├── test_cli.py         # CLI command tests
+├── integration/
+│   ├── __init__.py
+│   └── test_workflow.py  # End-to-end tests
+└── manual_test.sh      # Manual testing script
+```
+
+#### Writing Tests
+
+```python
+# Example test
+def test_config_loading(temp_project):
+    """Test loading default configuration"""
+    config = Config(str(temp_project))
+    loaded = config.load()
+
+    assert "version" in loaded
+    assert "memos" in loaded
+```
+
+#### Running Tests
+
+```bash
+# All tests
+pytest tests/ -v
+
+# With coverage
+pytest tests/ --cov=src --cov-report=html
+
+# Specific module
+pytest tests/test_config.py -v
+
+# Integration tests only
+pytest tests/integration/ -v
+```
 
 ### Adding a New Rule Type
 
@@ -458,8 +568,11 @@ GIT_DOC_HOOK_DEBUG=1 git-doc-hook status
 | Language analyzers | `src/analyzers/` |
 | MemOS sync | `src/memos/client.py` |
 | CLI commands | `src/cli.py` |
-| Default config | `templates/.git-doc-hook.yml` |
-| Hook templates | `src/hooks/` |
+| Template rendering | `src/template.py` |
+| Document updates | `src/updaters.py` |
+| Default config | `examples/.git-doc-hook.yml` |
+| Builtin templates | `templates/prompts/` |
+| Hook templates | `.git/hooks/` (installed) |
 
 ### Key Patterns
 
@@ -467,7 +580,9 @@ GIT_DOC_HOOK_DEBUG=1 git-doc-hook status
 2. **Adding config key**: Update `DEFAULT_CONFIG` + add property
 3. **Adding language**: Create analyzer + register in `__init__.py`
 4. **Adding MemOS record type**: Add factory in `MemOSRecord.create_*`
-5. **Modifying hook**: Edit templates in `src/hooks/`
+5. **Adding template**: Create `.j2` file in `templates/prompts/`
+6. **Adding document action**: Add method to `DocumentUpdater` in `src/updaters.py`
+7. **Modifying hook**: Edit templates in `src/hooks/`
 
 ### Important Constraints
 

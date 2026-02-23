@@ -1,0 +1,81 @@
+# Git-Doc-Hook Configuration for Python Projects
+# Optimized for Python/Django/Flask projects
+
+version: "1.0"
+
+# Python-specific rules
+rules:
+  # Django models
+  - pattern: "**/models.py"
+    layers: ["traditional", "config"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/models.md"
+        section: "Data Models"
+        action: "append_table_row"
+        row_mapping:
+          Model: "{file}"
+          App: "{app}"
+          Fields: "{field_count}"
+
+  # Django views/controllers
+  - pattern: "**/views.py"
+    layers: ["traditional"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/api.md"
+        section: "Endpoints"
+        action: "append_table_row"
+
+  # Services layer
+  - pattern: "services/**/*.py"
+    layers: ["traditional", "config"]
+    when: ["file_exists"]
+    actions:
+      - target: "README.md"
+        section: "Services"
+        action: "append_table_row"
+        row_mapping:
+          Name: "{file}"
+          Module: "{module}"
+
+  # Tests
+  - pattern: "tests/**/*.py"
+    layers: ["config"]
+    when: ["file_exists"]
+    actions:
+      - target: ".clinerules"
+        section: "Testing Guidelines"
+        action: "update_section"
+
+  # Requirements/dependencies
+  - pattern: "requirements*.txt"
+    layers: ["traditional"]
+    when: ["file_exists"]
+    actions:
+      - target: "docs/dependencies.md"
+        action: "append_record"
+
+# Python-specific complexity thresholds
+complexity:
+  high_line_count: 80
+  high_nesting_depth: 4
+  high_param_count: 5
+
+# Python keywords
+keywords:
+  troubleshooting: ["fix", "bug", "error", "exception", "debug"]
+  decisions: ["decision", "decide", "选型", "architecture"]
+  best_practices: ["refactor", "optimize", "pep8", "cleanup"]
+  security: ["security", "auth", "vulnerability", "sql_injection", "xss"]
+
+# MemOS categories for Python
+memos:
+  enabled: true
+  categories:
+    exceptions:
+      memos_type: "troubleshooting"
+      keywords: ["exception", "error", "traceback"]
+    patterns:
+      memos_type: "practice"
+      keywords: ["pattern", "design"]

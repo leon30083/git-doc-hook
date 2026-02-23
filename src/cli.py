@@ -5,7 +5,7 @@ Provides commands for init, status, update, clear, and memos-sync.
 import json
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Any, Dict, List, Optional
 
 import click
 
@@ -412,19 +412,225 @@ def _update_traditional_docs(project_path: Path) -> bool:
         project_path: Path to project
 
     Returns:
-        True if updated
+        True if updated successfully
     """
-    # Placeholder: In real implementation, this would:
-    # 1. Scan changed files
-    # 2. Generate documentation updates
-    # 3. Apply to README.md, docs/*.md
+    try:
+        from template import create_renderer
+        from updaters import DocumentUpdater
+    except ImportError:
+        click.echo("  Warning: Template/updater modules not available")
+        return False
 
-    readme = project_path / "README.md"
-    if readme.exists():
-        click.echo(f"  Checking {readme}...")
-        # Actual implementation would parse and update
+    state = StateManager(str(project_path))
+    config = Config(str(project_path))
+    pending = state.get_pending()
 
-    return True
+    if not pending:
+        click.echo("  No pending updates to process")
+        return False
+
+    # Create renderer and updater
+    renderer = create_renderer(project_path, config)
+    updater = DocumentUpdater(
+        dry_run=config.dry_run,
+        backup=config.backup_enabled,
+    )
+
+    # Build template context
+    context = renderer.build_context(project_path, pending, config)
+
+    any_updated = False
+
+    # Process each file's rules
+    for file_path in pending.files:
+        matching_rules = config.get_rules_for_pattern(file_path)
+
+        for rule in matching_rules:
+            # Only process rules that target traditional docs
+            if "traditional" not in rule.get("layers", []):
+                continue
+
+            for action in rule.get("actions", []):
+                target = action.get("target", "")
+                action_type = action.get("action", "")
+                section = action.get("section", "")
+
+                if not target:
+                    continue
+
+                target_path = project_path / target
+
+                try:
+                    if action_type == "append_table_row":
+                        # Build row data from context
+                        row_data = _build_row_data(file_path, context, action)
+
+                        # Get table headers from action or use defaults
+                        headers = action.get("headers", _get_default_headers(section))
+
+                        result = updater.append_table_row(
+                            target_file=target_path,
+                            section=section or "Documentation",
+                            row_data=row_data,
+                            table_headers=headers,
+                        )
+
+                        if result.success:
+                            click.echo(f"  ✓ Updated {target}: {section}")
+                            any_updated = True
+
+                    elif action_type == "append_record":
+                        # Generate content from template
+                        content = renderer.render_traditional(context)
+
+                        result = updater.append_record(
+                            target_file=target_path,
+                            content=content,
+                        )
+
+                        if result.success:
+                            click.echo(f"  ✓ Appended to {target}")
+                            any_updated = True
+
+                    elif action_type == "update_section":
+                        # Generate content from template
+                        content = renderer.render_traditional(context)
+
+                        result = updater.update_section(
+                            target_file=target_path,
+                            section=section or "Updates",
+                            new_content=content,
+                        )
+
+                        if result.success:
+                            click.echo(f"  ✓ Updated section '{section}' in {target}")
+                            any_updated = True
+
+                    elif action_type == "prepend_content":
+                        content = renderer.render_traditional(context)
+
+                        result = updater.prepend_content(
+                            target_file=target_path,
+                            content=content,
+                        )
+
+                        if result.success:
+                            click.echo(f"  ✓ Prepended to {target}")
+                            any_updated = True
+
+                except Exception as e:
+                    click.echo(f"  ✗ Error updating {target}: {e}")
+
+    # If no specific rules matched, try default README update
+    if not any_updated:
+        readme = project_path / "README.md"
+        if readme.exists():
+            content = renderer.render_traditional(context)
+            result = updater.append_record(
+                target_file=readme,
+                content=f"\n## Recent Changes\n\n{content}\n",
+            )
+            if result.success:
+                click.echo(f"  ✓ Updated README.md")
+                any_updated = True
+
+    return any_updated
+
+
+def _build_row_data(file_path: str, context: Dict[str, Any], action: Dict[str, Any]) -> Dict[str, str]:
+    """Build row data for table insertion
+
+    Args:
+        file_path: File path being processed
+        context: Template context
+        action: Action configuration
+
+    Returns:
+        Dictionary of column name to value
+    """
+    # Get row mapping from action or use defaults
+    row_mapping = action.get("row_mapping", {})
+
+    if row_mapping:
+        # Use explicit mapping
+        return {col: _extract_value(file_path, context, value_expr)
+                for col, value_expr in row_mapping.items()}
+
+    # Default mapping based on section type
+    path = Path(file_path)
+    return {
+        "File": path.name,
+        "Path": str(path),
+        "Type": _get_file_type(file_path),
+    }
+
+
+def _extract_value(file_path: str, context: Dict[str, Any], expr: str) -> str:
+    """Extract a value using an expression
+
+    Args:
+        file_path: File path
+        context: Template context
+        expr: Expression to evaluate
+
+    Returns:
+        Extracted value
+    """
+    # Simple substitution
+    substitutions = {
+        "{file}": Path(file_path).name,
+        "{path}": file_path,
+        "{type}": _get_file_type(file_path),
+    }
+
+    for key, value in substitutions.items():
+        if key in expr:
+            return expr.replace(key, value)
+
+    return expr
+
+
+def _get_file_type(file_path: str) -> str:
+    """Determine file type from path
+
+    Args:
+        file_path: File path
+
+    Returns:
+        File type string
+    """
+    path = Path(file_path)
+    parent = path.parent.name.lower()
+
+    type_map = {
+        "service": "Service",
+        "model": "Model",
+        "entity": "Model",
+        "controller": "Controller",
+        "util": "Utility",
+        "helper": "Utility",
+        "test": "Test",
+    }
+
+    return type_map.get(parent, "Module")
+
+
+def _get_default_headers(section: str) -> List[str]:
+    """Get default table headers for a section
+
+    Args:
+        section: Section name
+
+    Returns:
+        List of headers
+    """
+    header_map = {
+        "Services": ["Name", "Path", "Type"],
+        "Components": ["Name", "Path", "Type"],
+        "Modules": ["File", "Path", "Description"],
+    }
+
+    return header_map.get(section, ["Name", "Path", "Type"])
 
 
 def _update_config_rules(project_path: Path) -> bool:
@@ -434,19 +640,50 @@ def _update_config_rules(project_path: Path) -> bool:
         project_path: Path to project
 
     Returns:
-        True if updated
+        True if updated successfully
     """
-    # Placeholder implementation
-    config_files = [
-        project_path / ".clinerules",
-        project_path / ".cursorrules",
-    ]
+    try:
+        from template import create_renderer
+        from updaters import ConfigFileUpdater, extract_code_patterns
+    except ImportError:
+        click.echo("  Warning: Template/updater modules not available")
+        return False
 
-    for config_file in config_files:
-        if config_file.exists():
-            click.echo(f"  Checking {config_file}...")
+    state = StateManager(str(project_path))
+    config = Config(str(project_path))
+    pending = state.get_pending()
 
-    return True
+    if not pending:
+        return False
+
+    updater = ConfigFileUpdater(dry_run=config.dry_run)
+    any_updated = False
+
+    # Extract patterns from changed files
+    file_paths = [project_path / f for f in pending.files]
+    patterns = extract_code_patterns(file_paths, project_path)
+
+    if not patterns:
+        click.echo("  No code patterns detected")
+        return False
+
+    # Update .clinerules
+    clinerules_path = project_path / ".clinerules"
+    result = updater.update_clinerules(project_path, patterns)
+
+    if result.success and result.message != "All patterns already documented":
+        click.echo(f"  ✓ Updated .clinerules: {result.message}")
+        any_updated = True
+
+    # Update .cursorrules
+    cursorrules_path = project_path / ".cursorrules"
+    result = updater.update_cursorrules(project_path, patterns)
+
+    if result.success:
+        click.echo(f"  ✓ Updated .cursorrules: {result.message}")
+        any_updated = True
+
+    return any_updated
 
 
 def _sync_to_memos(project_path: Path, pending) -> bool:
@@ -467,7 +704,7 @@ def _sync_to_memos(project_path: Path, pending) -> bool:
     )
 
     # Create record from pending info
-    record = MemOSRecord.create_from_commit(
+    record = MemOSClient.create_from_commit(
         commit_message=pending.commit_message,
         changed_files=pending.files,
         diff_summary=pending.reason,
