@@ -162,7 +162,7 @@ class DocumentUpdater:
             success=True,
             target_file=str(target_file),
             action="append_record",
-            message=f"Appended {len(content)} characters",
+            message=f"[DRY RUN] Would append {len(content)} characters",
         )
 
     def update_section(

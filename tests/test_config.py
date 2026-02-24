@@ -1,5 +1,4 @@
 """Tests for configuration management"""
-import json
 import pytest
 from pathlib import Path
 from git_doc_hook.core.config import Config
@@ -8,7 +7,9 @@ from git_doc_hook.core.config import Config
 @pytest.fixture
 def temp_project(tmp_path):
     """Create a temporary project directory"""
-    project = tmp_path / "test_project"
+    # Use unique name for each test
+    import uuid
+    project = tmp_path / f"test_project_{uuid.uuid4().hex[:8]}"
     project.mkdir()
     return project
 
@@ -21,7 +22,6 @@ def sample_config(temp_project):
 version: "1.0"
 memos:
   enabled: false
-  api_url: "http://localhost:9000"
 layers:
   custom:
     name: "Custom Layer"
@@ -56,10 +56,8 @@ def test_config_merge_user_config(sample_config):
 
     # User override
     assert loaded["memos"]["enabled"] is False
-    assert loaded["memos"]["api_url"] == "http://localhost:9000"
 
     # Default values preserved
-    assert "categories" in loaded["memos"]
     assert "traditional" in loaded["layers"]
 
 
@@ -85,8 +83,6 @@ def test_memos_properties(sample_config):
     config = Config(str(sample_config))
 
     assert config.memos_enabled is False
-    assert config.memos_api_url == "http://localhost:9000"
-    assert config.memos_cube_id == "git-doc-hook"
 
 
 def test_layers_property(sample_config):
@@ -122,14 +118,11 @@ def test_get_method(temp_project):
     """Test get method with dot notation"""
     config = Config(str(temp_project))
 
-    # Get existing value
-    assert config.get("memos.enabled") is True
+    # Get existing value - default is False
+    assert config.get("memos.enabled") is False
 
     # Get with default
     assert config.get("nonexistent.key", "default") == "default"
-
-    # Get nested
-    assert config.get("memos.api_url") == "http://localhost:8000"
 
 
 def test_get_rules_for_pattern(temp_project):
@@ -157,15 +150,6 @@ def test_validate_invalid_config(temp_project):
     errors = config.validate()
 
     assert len(errors) > 0
-
-
-def test_get_memos_category(temp_project):
-    """Test getting MemOS category configuration"""
-    config = Config(str(temp_project))
-    category = config.get_memos_category("troubleshooting")
-
-    assert category is not None
-    assert category["memos_type"] == "troubleshooting"
 
 
 def test_get_layer_docs(temp_project):
@@ -198,10 +182,11 @@ def test_deep_merge(temp_project):
     """Test deep merge behavior"""
     config_file = temp_project / ".git-doc-hook.yml"
     config_content = """
-memos:
-  categories:
-    troubleshooting:
-      keywords: ["fix", "bug", "issue"]
+keywords:
+  troubleshooting:
+    - fix
+    - bug
+    - issue
 """
     config_file.write_text(config_content)
 
@@ -209,7 +194,7 @@ memos:
     loaded = config.load()
 
     # Should have user keywords
-    assert "fix" in loaded["memos"]["categories"]["troubleshooting"]["keywords"]
+    assert "fix" in loaded["keywords"]["troubleshooting"]
 
-    # Should preserve other categories
-    assert "decisions" in loaded["memos"]["categories"]
+    # Should preserve other keyword categories
+    assert "decisions" in loaded["keywords"]

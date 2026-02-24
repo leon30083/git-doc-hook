@@ -4,17 +4,21 @@ Manages pending update state with multi-project isolation.
 """
 import json
 import time
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 from .config import Config
 
 
 @dataclass
 class PendingUpdate:
-    """Represents a pending documentation update"""
+    """Represents a pending documentation update
+
+    Includes support for MemOS records that will be synced
+    by Claude Code (consumer) rather than directly by git-doc-hook.
+    """
 
     layers: Set[str]
     reason: str
@@ -22,6 +26,7 @@ class PendingUpdate:
     timestamp: float
     files: List[str]
     commit_message: str
+    memos_records: List[Dict[str, Any]] = field(default_factory=list)
 
     def to_dict(self) -> Dict:
         """Convert to dictionary for JSON serialization"""
@@ -32,11 +37,12 @@ class PendingUpdate:
             "timestamp": self.timestamp,
             "files": self.files,
             "commit_message": self.commit_message,
+            "memos_records": self.memos_records,
         }
 
     @classmethod
     def from_dict(cls, data: Dict) -> "PendingUpdate":
-        """Create from dictionary"""
+        """Create from dictionary with backward compatibility"""
         return cls(
             layers=set(data.get("layers", [])),
             reason=data.get("reason", ""),
@@ -44,6 +50,7 @@ class PendingUpdate:
             timestamp=data.get("timestamp", time.time()),
             files=data.get("files", []),
             commit_message=data.get("commit_message", ""),
+            memos_records=data.get("memos_records", []),
         )
 
 
@@ -246,6 +253,84 @@ class StateManager:
         """Clean up state files for this project"""
         if self.state_file.exists():
             self.state_file.unlink()
+
+    # MemOS record management methods
+
+    def add_memos_record(self, record: Dict[str, Any]) -> None:
+        """Add a MemOS record to pending state
+
+        Args:
+            record: Dictionary containing MemOS record data with keys:
+                    content, record_type, project, commit_hash,
+                    commit_message, files, metadata, timestamp, cube_id
+        """
+        state = self._load_state()
+        pending = state.get("pending")
+
+        if pending:
+            pending.setdefault("memos_records", []).append(record)
+            self._save_state(state)
+
+    def get_pending_memos_records(self) -> List[Dict[str, Any]]:
+        """Get MemOS records pending sync
+
+        Returns:
+            List of MemOS record dictionaries
+        """
+        state = self._load_state()
+        pending = state.get("pending")
+        return pending.get("memos_records", []) if pending else []
+
+    def clear_pending_memos(self, only_synced: bool = False) -> int:
+        """Clear pending MemOS records
+
+        Args:
+            only_synced: If True, only clear records marked as synced.
+                        If False, clear all records.
+
+        Returns:
+            Number of records cleared
+        """
+        state = self._load_state()
+        count = 0
+
+        if state.get("pending"):
+            records = state["pending"].get("memos_records", [])
+
+            if only_synced:
+                # Only clear records marked as synced
+                remaining = [r for r in records if not r.get("synced", False)]
+                count = len(records) - len(remaining)
+                state["pending"]["memos_records"] = remaining
+            else:
+                # Clear all
+                count = len(records)
+                state["pending"]["memos_records"] = []
+
+            self._save_state(state)
+
+        return count
+
+    def mark_memos_record_synced(self, record_index: int) -> bool:
+        """Mark a specific MemOS record as synced
+
+        Args:
+            record_index: Index of the record to mark
+
+        Returns:
+            True if record was found and marked
+        """
+        state = self._load_state()
+        pending = state.get("pending")
+
+        if pending:
+            records = pending.get("memos_records", [])
+            if 0 <= record_index < len(records):
+                records[record_index]["synced"] = True
+                self._save_state(state)
+                return True
+
+        return False
 
     @classmethod
     def list_all_projects(cls, base_dir: Optional[Path] = None) -> List[Dict]:

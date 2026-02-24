@@ -1,20 +1,14 @@
 """Command-line interface for git-doc-hook
 
-Provides commands for init, status, update, clear, and memos-sync.
+Provides commands for init, status, update, clear, and memos management.
 """
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import click
-
-# Try to import Click, provide helpful message if not available
-try:
-    import click
-except ImportError:
-    print("Error: click is required. Install with: pip install click")
-    sys.exit(1)
 
 # Try to import YAML
 try:
@@ -26,7 +20,7 @@ except ImportError:
 from git_doc_hook.core.config import Config
 from git_doc_hook.core.git import GitManager, GitError
 from git_doc_hook.core.state import StateManager
-from git_doc_hook.memos.client import MemOSClient, MemOSRecord
+from git_doc_hook.memos.client import MemOSRecord
 from git_doc_hook.analyzers import get_analyzer
 from git_doc_hook.template import create_renderer
 from git_doc_hook.updaters import DocumentUpdater, ConfigFileUpdater, extract_code_patterns
@@ -111,24 +105,18 @@ git-doc-hook check-post-commit
     if hooks_installed:
         click.echo(f"Installed Git hooks: {', '.join(hooks_installed)}")
 
-    # Initialize MemOS client if configured
+    # Check MemOS configuration
     if config.memos_enabled:
-        client = MemOSClient(
-            api_url=config.memos_api_url,
-            cube_id=config.memos_cube_id,
-            enabled=True,
-        )
-        if client.is_available():
-            click.echo(f"✓ MemOS connected: {config.memos_api_url}")
-        else:
-            click.echo(f"⚠ MemOS not available at: {config.memos_api_url}")
-            click.echo("  Records will be cached and synced later")
+        click.echo(f"✓ MemOS integration enabled")
+        click.echo("  Records will be written to state file for Claude Code to sync")
 
     click.echo("\n✓ git-doc-hook initialized successfully!")
     click.echo("\nNext steps:")
     click.echo("  1. Review configuration: .git-doc-hook.yml")
     click.echo("  2. Commit and push normally")
     click.echo("  3. If prompted, run: git-doc-hook update <layers>")
+    if config.memos_enabled:
+        click.echo("  4. For MemOS sync: Use Claude Code's /memos-sync command")
 
 
 @cli.command()
@@ -161,18 +149,11 @@ def status(project: str, output_json: bool):
 
     click.echo(state.show_summary())
 
-    # Show MemOS status
-    config = Config(str(project_path))
-    if config.memos_enabled:
-        client = MemOSClient(
-            api_url=config.memos_api_url,
-            cube_id=config.memos_cube_id,
-            enabled=True,
-        )
-        if client.is_available():
-            click.echo(f"\n✓ MemOS connected: {config.memos_api_url}")
-        else:
-            click.echo(f"\n⚠ MemOS unavailable: {config.memos_api_url}")
+    # Show MemOS pending records
+    memos_records = state.get_pending_memos_records()
+    if memos_records:
+        click.echo(f"\n⚠ MemOS: {len(memos_records)} record(s) pending sync")
+        click.echo("   Run Claude Code's /memos-sync to sync these records")
 
 
 @cli.command()
@@ -290,40 +271,73 @@ def clear(project: str):
     "--project", "-p", default=".", help="Path to project directory"
 )
 def memos_sync(project: str):
-    """Sync records to MemOS manually
+    """Show MemOS records pending sync
 
-    Uploads any cached records and shows current statistics.
+    Displays records waiting to be synced to MemOS by Claude Code.
+    Actual sync is performed by Claude Code using MCP tools.
     """
     project_path = Path(project).resolve()
-    config = Config(str(project_path))
+    state = StateManager(str(project_path))
+    records = state.get_pending_memos_records()
 
-    if not config.memos_enabled:
-        click.echo("MemOS integration is not enabled")
+    if not records:
+        click.echo("No MemOS records pending sync")
         return
 
-    client = MemOSClient(
-        api_url=config.memos_api_url,
-        cube_id=config.memos_cube_id,
-        enabled=True,
-    )
+    click.echo(f"MemOS records pending sync: {len(records)}")
+    click.echo("Run Claude Code's /memos-sync to sync these records\n")
 
-    if not client.is_available():
-        click.echo(f"✗ MemOS unavailable at: {config.memos_api_url}")
-        return
+    for i, record in enumerate(records, 1):
+        record_type = record.get("record_type", "unknown")
+        commit_msg = record.get("commit_message", "")[:50]
+        click.echo(f"  {i}. [{record_type}] {commit_msg}...")
 
-    click.echo(f"✓ MemOS connected: {config.memos_api_url}")
 
-    # Sync offline cache
-    synced = client.sync_offline_cache()
-    if synced > 0:
-        click.echo(f"✓ Synced {synced} cached records")
+@cli.command("check-memos", hidden=True)
+@click.option(
+    "--project", "-p", default=".", help="Path to project directory"
+)
+@click.option(
+    "--json", "output_json", is_flag=True, help="Output as JSON"
+)
+def check_memos(project: str, output_json: bool):
+    """Check and output pending MemOS records
 
-    # Show stats
-    stats = client.get_stats()
-    if stats:
-        click.echo(f"\nMemOS Statistics:")
-        click.echo(f"  Total memories: {stats.get('total_memories', 0)}")
-        click.echo(f"  Cube: {config.memos_cube_id}")
+    Internal command for Claude Code to read pending records.
+    """
+    project_path = Path(project).resolve()
+    state = StateManager(str(project_path))
+    records = state.get_pending_memos_records()
+
+    if output_json:
+        result = {
+            "count": len(records),
+            "records": records,
+        }
+        click.echo(json.dumps(result, indent=2))
+    else:
+        click.echo(f"MemOS pending: {len(records)} records")
+        for record in records:
+            click.echo(f"  - {record.get('record_type', 'unknown')}: {record.get('commit_message', '')[:50]}")
+
+
+@cli.command("clear-memos", hidden=True)
+@click.option(
+    "--project", "-p", default=".", help="Path to project directory"
+)
+@click.option(
+    "--synced", is_flag=True, help="Only clear synced records"
+)
+def clear_memos(project: str, synced: bool):
+    """Clear MemOS pending records
+
+    Internal command for Claude Code to clear synced records.
+    """
+    project_path = Path(project).resolve()
+    state = StateManager(str(project_path))
+    count = state.clear_pending_memos(only_synced=synced)
+
+    click.echo(f"Cleared {count} MemOS record(s)")
 
 
 @cli.command(hidden=True)
@@ -689,37 +703,45 @@ def _update_config_rules(project_path: Path) -> bool:
 
 
 def _sync_to_memos(project_path: Path, pending) -> bool:
-    """Sync commit information to MemOS
+    """Create MemOS record and write to state file
+
+    Records are written to state for Claude Code to sync via MCP.
 
     Args:
         project_path: Path to project
         pending: Pending update info
 
     Returns:
-        True if synced successfully
+        True if record was created successfully
     """
     config = Config(str(project_path))
-    client = MemOSClient(
-        api_url=config.memos_api_url,
-        cube_id=config.memos_cube_id,
-        enabled=True,
-    )
+    state = StateManager(str(project_path))
+
+    # Generate cube_id from project name
+    cube_id = f"{config.project_path.name}-{config.get('state.project_key', config.project_path.name)}"
 
     # Create record from pending info
-    record = MemOSClient.create_from_commit(
+    record = MemOSRecord.create_from_commit(
         commit_message=pending.commit_message,
         changed_files=pending.files,
         diff_summary=pending.reason,
-        project=project_path.name,
+        project=config.project_path.name,
         commit_hash=pending.triggered_by,
     )
 
-    if client.add_record(record):
-        click.echo(f"  Synced to MemOS: {client.api_url}")
-        return True
-    else:
-        click.echo(f"  Cached for later MemOS sync")
-        return True  # Return True even if cached
+    # Update cube_id
+    record_dict = record.to_dict()
+    record_dict["cube_id"] = cube_id
+
+    # Add to pending state
+    state.add_memos_record(record_dict)
+
+    total_records = len(state.get_pending_memos_records())
+    click.echo(f"  Created MemOS record: {record.record_type}")
+    click.echo(f"  Total pending: {total_records} record(s)")
+    click.echo("  Run Claude Code's /memos-sync to sync to MemOS")
+
+    return True
 
 
 def _git_commit(project_path: Path, message: str) -> bool:

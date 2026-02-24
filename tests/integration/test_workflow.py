@@ -16,7 +16,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent / "src"))
 @pytest.fixture
 def isolated_git_repo(tmp_path):
     """Create an isolated Git repository for testing"""
-    repo = tmp_path / "test_repo"
+    import uuid
+    repo = tmp_path / f"test_repo_{uuid.uuid4().hex[:8]}"
     repo.mkdir()
 
     # Initialize git repo
@@ -253,8 +254,8 @@ def test_document_updater_dry_run(tmp_path):
     )
 
     assert result.success
-    assert "Dry run" in result.message
-    assert test_file.read_text() == original_content
+    assert "[DRY RUN]" in result.message
+    assert test_file.read_text() == original_content  # File should not be modified
 
 
 def test_config_file_updater(tmp_path):

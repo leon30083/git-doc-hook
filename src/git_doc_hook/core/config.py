@@ -22,28 +22,7 @@ class Config:
             "project_key": None,  # Will be set to repo name
         },
         "memos": {
-            "enabled": True,
-            "api_url": "http://localhost:8000",
-            "cube_id": "git-doc-hook",
-            "auto_sync": True,
-            "categories": {
-                "troubleshooting": {
-                    "memos_type": "troubleshooting",
-                    "keywords": ["fix", "bug", "error", "issue", "debug"],
-                },
-                "decisions": {
-                    "memos_type": "adr",
-                    "keywords": ["decision", "decide", "选型", "architecture"],
-                },
-                "best_practices": {
-                    "memos_type": "practice",
-                    "keywords": ["refactor", "optimize", "improve", "better"],
-                },
-                "security": {
-                    "memos_type": "security",
-                    "keywords": ["security", "auth", "vulnerability", "xss"],
-                },
-            },
+            "enabled": False,  # Disabled by default, user must opt-in
         },
         "layers": {
             "traditional": {
@@ -186,17 +165,7 @@ class Config:
     @property
     def memos_enabled(self) -> bool:
         """Check if MemOS integration is enabled"""
-        return self.get("memos.enabled", True)
-
-    @property
-    def memos_api_url(self) -> str:
-        """Get MemOS API URL"""
-        return self.get("memos.api_url", "http://localhost:8000")
-
-    @property
-    def memos_cube_id(self) -> str:
-        """Get MemOS cube ID"""
-        return self.get("memos.cube_id", "git-doc-hook")
+        return self.get("memos.enabled", False)
 
     @property
     def layers(self) -> Dict[str, Dict[str, Any]]:

@@ -10,7 +10,8 @@ from git_doc_hook.core.config import Config
 @pytest.fixture
 def temp_project(tmp_path):
     """Create a temporary project directory"""
-    project = tmp_path / "test_project"
+    import uuid
+    project = tmp_path / f"test_project_{uuid.uuid4().hex[:8]}"
     project.mkdir()
     # Create .git to make it a valid git repo
     (project / ".git").mkdir()
@@ -288,3 +289,239 @@ def test_empty_state_file(state_manager, temp_project):
 
     # Should not crash
     assert not state_manager.is_pending()
+
+
+# MemOS record management tests
+
+def test_add_memos_record(state_manager):
+    """Test adding a MemOS record to pending state"""
+    # First, set up a pending state
+    state_manager.set_pending(
+        layers={"memo"},
+        reason="Test",
+        triggered_by="abc123",
+        files=["test.py"],
+        commit_message="fix: bug",
+    )
+
+    # Add a MemOS record
+    record = {
+        "content": "# Test Record\n\nTest content",
+        "record_type": "troubleshooting",
+        "project": "test-project",
+        "commit_hash": "abc123",
+        "commit_message": "fix: bug",
+        "files": ["test.py"],
+        "metadata": {"category": "troubleshooting"},
+        "timestamp": time.time(),
+        "cube_id": "test-cube",
+    }
+    state_manager.add_memos_record(record)
+
+    # Verify it was added
+    records = state_manager.get_pending_memos_records()
+    assert len(records) == 1
+    assert records[0]["record_type"] == "troubleshooting"
+
+
+def test_get_pending_memos_records_empty(temp_project):
+    """Test getting MemOS records when none exist"""
+    # Use a fresh StateManager for this test
+    state = StateManager(str(temp_project))
+    records = state.get_pending_memos_records()
+    assert records == []
+
+
+def test_get_pending_memos_records(state_manager):
+    """Test getting pending MemOS records"""
+    # Set up pending state
+    state_manager.set_pending(
+        layers={"memo"},
+        reason="Test",
+        triggered_by="abc",
+        files=[],
+        commit_message="test",
+    )
+
+    # Add multiple records
+    for i in range(3):
+        record = {
+            "content": f"Record {i}",
+            "record_type": "general",
+            "project": "test",
+            "commit_hash": f"commit{i}",
+            "commit_message": f"Message {i}",
+            "files": [],
+            "metadata": {},
+            "timestamp": time.time(),
+            "cube_id": "test-cube",
+        }
+        state_manager.add_memos_record(record)
+
+    records = state_manager.get_pending_memos_records()
+    assert len(records) == 3
+
+
+def test_clear_pending_memos(state_manager):
+    """Test clearing all pending MemOS records"""
+    # Set up pending state with records
+    state_manager.set_pending(
+        layers={"memo"},
+        reason="Test",
+        triggered_by="abc",
+        files=[],
+        commit_message="test",
+    )
+
+    # Add records
+    for i in range(2):
+        record = {
+            "content": f"Record {i}",
+            "record_type": "general",
+            "project": "test",
+            "commit_hash": f"commit{i}",
+            "commit_message": f"Message {i}",
+            "files": [],
+            "metadata": {},
+            "timestamp": time.time(),
+            "cube_id": "test-cube",
+        }
+        state_manager.add_memos_record(record)
+
+    assert len(state_manager.get_pending_memos_records()) == 2
+
+    # Clear all
+    count = state_manager.clear_pending_memos(only_synced=False)
+    assert count == 2
+    assert len(state_manager.get_pending_memos_records()) == 0
+
+
+def test_clear_pending_memos_only_synced(state_manager):
+    """Test clearing only synced MemOS records"""
+    # Set up pending state
+    state_manager.set_pending(
+        layers={"memo"},
+        reason="Test",
+        triggered_by="abc",
+        files=[],
+        commit_message="test",
+    )
+
+    # Add records, some synced, some not
+    for i in range(4):
+        record = {
+            "content": f"Record {i}",
+            "record_type": "general",
+            "project": "test",
+            "commit_hash": f"commit{i}",
+            "commit_message": f"Message {i}",
+            "files": [],
+            "metadata": {},
+            "timestamp": time.time(),
+            "cube_id": "test-cube",
+            "synced": i % 2 == 0,  # Even indices are synced
+        }
+        state_manager.add_memos_record(record)
+
+    assert len(state_manager.get_pending_memos_records()) == 4
+
+    # Clear only synced
+    count = state_manager.clear_pending_memos(only_synced=True)
+    assert count == 2  # 2 records were synced
+
+    records = state_manager.get_pending_memos_records()
+    assert len(records) == 2  # 2 unsynced remain
+
+
+def test_mark_memos_record_synced(state_manager):
+    """Test marking a MemOS record as synced"""
+    # Set up pending state
+    state_manager.set_pending(
+        layers={"memo"},
+        reason="Test",
+        triggered_by="abc",
+        files=[],
+        commit_message="test",
+    )
+
+    # Add a record
+    record = {
+        "content": "Test",
+        "record_type": "general",
+        "project": "test",
+        "commit_hash": "abc",
+        "commit_message": "test",
+        "files": [],
+        "metadata": {},
+        "timestamp": time.time(),
+        "cube_id": "test-cube",
+    }
+    state_manager.add_memos_record(record)
+
+    # Mark as synced
+    result = state_manager.mark_memos_record_synced(0)
+    assert result is True
+
+    # Verify it's marked
+    records = state_manager.get_pending_memos_records()
+    assert records[0].get("synced", False) is True
+
+
+def test_mark_memos_record_synced_invalid_index(state_manager):
+    """Test marking an invalid record index as synced"""
+    # Set up pending state
+    state_manager.set_pending(
+        layers={"memo"},
+        reason="Test",
+        triggered_by="abc",
+        files=[],
+        commit_message="test",
+    )
+
+    result = state_manager.mark_memos_record_synced(99)
+    assert result is False
+
+
+def test_pending_update_with_memos_records_backward_compat():
+    """Test PendingUpdate backward compatibility with memos_records"""
+    # Old format without memos_records
+    old_data = {
+        "layers": ["traditional"],
+        "reason": "Test",
+        "triggered_by": "abc",
+        "timestamp": time.time(),
+        "files": ["test.py"],
+        "commit_message": "test",
+    }
+
+    pending = PendingUpdate.from_dict(old_data)
+
+    assert pending.layers == {"traditional"}
+    assert pending.memos_records == []  # Should default to empty list
+
+    # New format with memos_records
+    new_data = {
+        "layers": ["memo"],
+        "reason": "Test",
+        "triggered_by": "abc",
+        "timestamp": time.time(),
+        "files": ["test.py"],
+        "commit_message": "test",
+        "memos_records": [
+            {
+                "content": "Test",
+                "record_type": "general",
+                "project": "test",
+                "commit_hash": "abc",
+                "commit_message": "test",
+                "files": [],
+                "metadata": {},
+                "timestamp": time.time(),
+                "cube_id": "test-cube",
+            }
+        ],
+    }
+
+    pending = PendingUpdate.from_dict(new_data)
+    assert len(pending.memos_records) == 1
+    assert pending.memos_records[0]["record_type"] == "general"

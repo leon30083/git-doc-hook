@@ -252,37 +252,45 @@ class GitManager:
         Returns:
             List of commits
         """
-        args = ["log", f"-{limit}", "--pretty=format:%H|%s|%an|%ai"]
+        args = ["log", f"-{limit}", "--pretty=format:%H|%s|%an|%ai", "--name-only"]
         if since_ref:
             args.append(f"{since_ref}..HEAD")
 
         result = self._run_git(args)
         commits = []
+        current_commit = None
 
         for line in result.stdout.strip().split("\n"):
             if not line:
                 continue
+
+            # Check if this is a commit line or a file line
             parts = line.split("|")
             if len(parts) >= 4:
+                # This is a commit line
+                if current_commit:
+                    commits.append(current_commit)
+
                 commit_hash, message, author, date_str = parts[:4]
                 try:
                     date = datetime.fromisoformat(date_str)
                 except ValueError:
                     date = datetime.now()
 
-                # Get files changed by this commit
-                files_result = self._run_git(["diff-tree", "--name-only", "-r", commit_hash])
-                files = files_result.stdout.strip().split("\n") if files_result.stdout else []
-
-                commits.append(
-                    Commit(
-                        hash=commit_hash,
-                        message=message,
-                        author=author,
-                        date=date,
-                        files=files,
-                    )
+                current_commit = Commit(
+                    hash=commit_hash,
+                    message=message,
+                    author=author,
+                    date=date,
+                    files=[],
                 )
+            elif current_commit is not None:
+                # This is a file line
+                current_commit.files.append(line)
+
+        # Don't forget the last commit
+        if current_commit:
+            commits.append(current_commit)
 
         return commits
 

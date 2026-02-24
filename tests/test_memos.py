@@ -1,27 +1,8 @@
-"""Tests for MemOS client"""
-import json
+"""Tests for MemOS record models"""
 import time
-from pathlib import Path
 import pytest
 
-from git_doc_hook.memos.client import MemOSClient, MemOSRecord
-
-
-@pytest.fixture
-def memos_client(tmp_path):
-    """Create a MemOS client with test cache location"""
-    # Use a temp path for cache
-    cache_file = tmp_path / "memos_cache.json"
-    client = MemOSClient(
-        api_url="http://localhost:9999",  # Non-existent URL
-        cube_id="test-cube",
-        timeout=0.1,  # Short timeout for tests
-        enabled=True,
-    )
-    # Override cache file for testing and clear it
-    client._cache_file = cache_file
-    client._offline_cache = []  # Start with empty cache
-    return client
+from git_doc_hook.memos.client import MemOSRecord
 
 
 def test_memos_record_creation():
@@ -50,8 +31,8 @@ def test_memos_record_to_dict():
     data = record.to_dict()
 
     assert "content" in data
-    assert "metadata" in data
-    assert data["metadata"]["type"] == "test"
+    assert data["record_type"] == "test"
+    assert data["project"] == "proj"
 
 
 def test_memos_record_auto_timestamp():
@@ -63,70 +44,9 @@ def test_memos_record_auto_timestamp():
     assert before <= record.timestamp <= after
 
 
-def test_memos_client_init(memos_client):
-    """Test MemOSClient initialization"""
-    assert memos_client.api_url == "http://localhost:8000"  # Updated: returns default in MCP mode
-    assert memos_client.cube_id == "test-cube"
-    assert memos_client.enabled is True
-
-
-def test_memos_client_disabled():
-    """Test disabled MemOSClient"""
-    client = MemOSClient(enabled=False)
-
-    assert not client.enabled
-    assert not client.is_available()
-
-
-def test_memos_client_add_record_offline(memos_client):
-    """Test adding record when MemOS is unavailable"""
-    record = MemOSRecord(
-        content="Test content",
-        record_type="test",
-    )
-
-    # Should cache the record since server is unavailable
-    result = memos_client.add_record(record)
-
-    assert result is False  # Failed to sync
-    assert len(memos_client._offline_cache) == 1
-
-
-def test_memos_client_cache_persistence(memos_client, tmp_path):
-    """Test that cache is persisted to disk"""
-    record = MemOSRecord(content="Test")
-    memos_client.add_record(record)
-
-    # Create new client with same cache file
-    new_client = MemOSClient(
-        api_url="http://localhost:9999",
-        cube_id="test-cube",
-        enabled=True,
-    )
-    new_client._cache_file = tmp_path / "memos_cache.json"
-    new_client._load_cache()
-
-    assert len(new_client._offline_cache) == 1
-
-
-def test_memos_client_sync_offline_cache(memos_client):
-    """Test syncing offline cache"""
-    # Add some cached records (reduced from 3 to 1 to avoid timeout)
-    record = MemOSRecord(content="Test 0")
-    memos_client.add_record(record)
-
-    assert len(memos_client._offline_cache) == 1
-
-    # Sync should keep record in cache (server unavailable)
-    synced = memos_client.sync_offline_cache()
-
-    # Record remains cached since server is down
-    assert len(memos_client._offline_cache) == 1
-
-
 def test_create_troubleshooting_record():
     """Test creating troubleshooting record"""
-    record = MemOSClient.create_troubleshooting_record(
+    record = MemOSRecord.create_troubleshooting_record(
         problem="Service crashes on startup",
         solution="Fixed null pointer in init",
         context="Production env",
@@ -141,7 +61,7 @@ def test_create_troubleshooting_record():
 
 def test_create_adr_record():
     """Test creating ADR record"""
-    record = MemOSClient.create_adr_record(
+    record = MemOSRecord.create_adr_record(
         title="Use PostgreSQL for database",
         decision="Chose PostgreSQL for ACID compliance",
         context="Need transactional support",
@@ -156,7 +76,7 @@ def test_create_adr_record():
 
 def test_create_practice_record():
     """Test creating practice record"""
-    record = MemOSClient.create_practice_record(
+    record = MemOSRecord.create_practice_record(
         practice="Use dependency injection for services",
         category="architecture",
         context="Web application",
@@ -169,7 +89,7 @@ def test_create_practice_record():
 
 def test_create_from_commit_troubleshooting():
     """Test creating record from troubleshooting commit"""
-    record = MemOSClient.create_from_commit(
+    record = MemOSRecord.create_from_commit(
         commit_message="fix: resolve race condition in auth",
         changed_files=["services/auth.py"],
         diff_summary="Added mutex lock",
@@ -183,7 +103,7 @@ def test_create_from_commit_troubleshooting():
 
 def test_create_from_commit_decision():
     """Test creating record from decision commit"""
-    record = MemOSClient.create_from_commit(
+    record = MemOSRecord.create_from_commit(
         commit_message="decision: use Redis for caching",
         changed_files=["cache.py"],
         diff_summary="Implemented Redis cache layer",
@@ -195,7 +115,7 @@ def test_create_from_commit_decision():
 
 def test_create_from_commit_practice():
     """Test creating record from practice commit"""
-    record = MemOSClient.create_from_commit(
+    record = MemOSRecord.create_from_commit(
         commit_message="refactor: extract service layer",
         changed_files=["services/base.py"],
         diff_summary="Created base service class",
@@ -207,7 +127,7 @@ def test_create_from_commit_practice():
 
 def test_create_from_commit_security():
     """Test creating record from security commit"""
-    record = MemOSClient.create_from_commit(
+    record = MemOSRecord.create_from_commit(
         commit_message="security: add input validation",
         changed_files=["validators.py"],
         diff_summary="Added XSS protection",
@@ -219,7 +139,7 @@ def test_create_from_commit_security():
 
 def test_create_from_commit_default():
     """Test creating default record from commit"""
-    record = MemOSClient.create_from_commit(
+    record = MemOSRecord.create_from_commit(
         commit_message="chore: update dependencies",
         changed_files=["requirements.txt"],
         diff_summary="Updated packages",
@@ -251,12 +171,13 @@ def test_memos_record_with_metadata():
     assert record.metadata["priority"] == 1
 
 
-def test_cache_limit(memos_client):
-    """Test that cache doesn't grow indefinitely"""
-    # Add many records
-    for i in range(200):
-        record = MemOSRecord(content=f"Test {i}")
-        memos_client.add_record(record)
+def test_memos_record_cube_id():
+    """Test MemOSRecord cube_id"""
+    record = MemOSRecord(
+        content="Test",
+        cube_id="test-cube",
+    )
 
-    # Cache should grow (no limit in current implementation)
-    assert len(memos_client._offline_cache) == 200
+    assert record.cube_id == "test-cube"
+    data = record.to_dict()
+    assert data["cube_id"] == "test-cube"

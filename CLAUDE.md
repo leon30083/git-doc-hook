@@ -173,10 +173,64 @@ Records are auto-created based on commit message keywords:
 | practice | refactor, optimize, improve, better | Practice/Category/Context |
 | security | security, auth, vulnerability, xss | Security practice record |
 
+## MemOS 同步
+
+git-doc-hook 采用**生产者-消费者**模式与 MemOS 集成：
+- **生产者**：git-doc-hook 将 MemOS 记录写入状态文件 `pending.json`
+- **消费者**：Claude Code 通过 `/memos-sync` 命令读取并同步到 MemOS
+
+### 工作流程
+
+1. **创建记录**：运行 `git-doc-hook update memo` 创建 MemOS 记录
+2. **检查状态**：运行 `git-doc-hook status` 查看待同步记录数量
+3. **执行同步**：在 Claude Code 中运行 `/memos-sync` 命令
+4. **确认同步**：命令显示记录摘要，用户确认后逐条同步到 MemOS
+
+### /memos-sync 命令
+
+```bash
+# 检查并同步待同步记录
+/memos-sync
+```
+
+**命令行为**：
+- 读取 `git-doc-hook check-memos --json` 获取待同步记录
+- 显示记录摘要（类型、commit message）
+- 要求用户确认后才执行 MCP 调用
+- 逐条调用 `mcp__memos-local__add_message` 同步
+- 同步成功后立即清除对应记录
+- 失败记录保留在 `pending.json` 中可重试
+
+**输出示例**：
+```
+待同步记录: 2 条
+
+1. [troubleshooting] fix: resolve race condition in auth
+2. [adr] decision: use Redis for caching
+
+是否同步以上 2 条记录？[y/N]
+```
+
+### 失败处理
+
+如果 MCP 调用失败：
+- 失败记录保留在 `pending.json` 中
+- 命令会显示"成功 N 条 / 失败 M 条"的汇总
+- 重新运行 `/memos-sync` 可重试失败的记录
+
+### 配置 MemOS
+
+在 `.git-doc-hook.yml` 中启用 MemOS：
+
+```yaml
+memos:
+  enabled: true
+```
+
 ## Important Constraints
 
-- **No blocking on MemOS**: Always cache offline, never fail sync
-- **State is per-project**: Use `project_key` for isolation between repos
-- **Hooks are optional**: Tool should work even if hooks aren't installed
-- **Config is merged**: User config overrides defaults via deep merge
-- **Python 3.8+**: Minimum version requirement
+- **用户确认**：MemOS 同步需要用户在 `/memos-sync` 中明确确认
+- **失败保留**：同步失败的记录保留在状态文件中，可重试
+- **状态隔离**：每个项目的 `pending.json` 独立存储
+- **Hooks 可选**：即使未安装 Git hooks，工具仍可正常工作
+- **Python 3.8+**：最低版本要求
