@@ -1,0 +1,77 @@
+version: '1.0'
+state:
+  dir: ~/.git-doc-hook
+  project_key: git-doc-hook
+memos:
+  enabled: false
+layers:
+  traditional:
+    name: Traditional Docs
+    docs:
+    - README.md
+    - docs/**/*.md
+  config:
+    name: Config Rules
+    docs:
+    - .clinerules
+    - .cursorrules
+  memo:
+    name: MemOS Records
+    docs: []
+rules:
+- pattern: services/**/*.py
+  layers:
+  - traditional
+  - config
+  when:
+  - file_exists
+  actions:
+  - target: README.md
+    section: Services
+    action: append_table_row
+- pattern: '**/*.py'
+  layers:
+  - memo
+  when:
+  - commit_contains:
+    - fix
+    - bug
+  - complexity_high: true
+  actions:
+  - target: docs/troubleshooting.md
+    action: append_record
+complexity:
+  high_line_count: 100
+  high_nesting_depth: 4
+  high_param_count: 6
+keywords:
+  troubleshooting:
+  - fix
+  - bug
+  - error
+  - issue
+  - debug
+  decisions:
+  - decision
+  - decide
+  - "\u9009\u578B"
+  - architecture
+  best_practices:
+  - refactor
+  - optimize
+  - improve
+  - better
+  security:
+  - security
+  - auth
+  - vulnerability
+commit:
+  message_template: 'docs(auto): update {layers} - {reason}'
+  auto_push: false
+templates:
+  enabled: true
+  dir: ~/.git-doc-hook/templates
+  use_builtin: true
+updaters:
+  dry_run: false
+  backup: true

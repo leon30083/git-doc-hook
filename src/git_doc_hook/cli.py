@@ -37,6 +37,34 @@ def cli():
     pass
 
 
+def _find_git_doc_hook_command() -> str:
+    """Find the full path to git-doc-hook executable.
+
+    This ensures hooks work even when ~/.local/bin is not in PATH.
+    """
+    import shutil
+
+    # First try to find via which/shutil
+    path = shutil.which("git-doc-hook")
+    if path:
+        return path
+
+    # Fallback to common locations
+    common_paths = [
+        Path.home() / ".local" / "bin" / "git-doc-hook",
+        Path.home() / ".bin" / "git-doc-hook",
+        Path("/usr/local/bin") / "git-doc-hook",
+        Path("/usr/bin") / "git-doc-hook",
+    ]
+
+    for p in common_paths:
+        if p.exists() and p.is_file():
+            return str(p)
+
+    # If all else fails, return just "git-doc-hook" and hope it's in PATH
+    return "git-doc-hook"
+
+
 @cli.command()
 @click.option(
     "--project", "-p", default=".", help="Path to project directory"
@@ -50,6 +78,9 @@ def init(project: str, force: bool):
     Creates default configuration and installs Git hooks.
     """
     project_path = Path(project).resolve()
+
+    # Find the full path to git-doc-hook for hooks
+    gdh_command = _find_git_doc_hook_command()
 
     if not (project_path / ".git").exists():
         click.echo(f"Error: Not a Git repository: {project_path}", err=True)
@@ -83,7 +114,7 @@ def init(project: str, force: bool):
 # git-doc-hook pre-push
 
 # Run git-doc-hook check
-git-doc-hook check-pre-push "$@"
+{gdh_command} check-pre-push "$@"
 """
         pre_push.write_text(pre_push_content)
         pre_push.chmod(0o755)
@@ -92,11 +123,11 @@ git-doc-hook check-pre-push "$@"
     # Post-commit hook
     post_commit = hooks_dir / "post-commit"
     if not post_commit.exists() or force:
-        post_commit_content = """#!/bin/bash
+        post_commit_content = f"""#!/bin/bash
 # git-doc-hook post-commit
 
 # Check if documentation update is needed
-git-doc-hook check-post-commit
+{gdh_command} check-post-commit
 """
         post_commit.write_text(post_commit_content)
         post_commit.chmod(0o755)
