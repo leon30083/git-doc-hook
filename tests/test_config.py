@@ -1,7 +1,7 @@
 """Tests for configuration management"""
 import pytest
 from pathlib import Path
-from git_doc_hook.core.config import Config
+from git_doc_hook.core.config import Config, glob_match
 
 
 @pytest.fixture
@@ -129,9 +129,77 @@ def test_get_rules_for_pattern(temp_project):
     """Test pattern matching in rules"""
     config = Config(str(temp_project))
 
-    # Should match default rule
+    # Should match default rule with glob_match
     matches = config.get_rules_for_pattern("services/auth.py")
     assert len(matches) > 0
+
+
+class TestGlobMatch:
+    """Test glob pattern matching with ** support."""
+
+    @pytest.mark.parametrize("pattern,path,expected", [
+        # ** recursive wildcard - the core fix
+        ("services/**/*.py", "services/auth.py", True),
+        ("services/**/*.py", "services/nested/file.py", True),
+        ("services/**/*.py", "services/deeply/nested/path/file.py", True),
+        ("**/*.py", "main.py", True),
+        ("**/*.py", "src/main.py", True),
+        ("**/*.py", "deep/nested/file.py", True),
+        ("**/*.py", "a/b/c/d/e/file.py", True),
+        # Leading **/ - matches any prefix
+        ("**/test.py", "test.py", True),
+        ("**/test.py", "src/test.py", True),
+        ("**/test.py", "a/b/c/test.py", True),
+        ("**/test/*.py", "test/file.py", True),
+        ("**/test/*.py", "src/test/file.py", True),
+        ("**/test/*.py", "a/b/c/test/file.py", True),
+        # * single wildcard (no directory crossing)
+        ("*.py", "main.py", True),
+        ("*.py", "src/main.py", False),
+        ("services/*.py", "services/auth.py", True),
+        ("services/*.py", "services/nested/file.py", False),
+        # ? single character wildcard
+        ("file?.py", "file1.py", True),
+        ("file?.py", "file.py", False),
+        ("file?.py", "file12.py", False),
+        # Specific directory patterns
+        ("src/**/*.py", "src/main.py", True),
+        ("src/**/*.py", "src/lib/file.py", True),
+        ("src/**/*.py", "src/a/b/c/file.py", True),
+        ("src/**/*.py", "lib/file.py", False),
+        # Middle /**/ - optional subdirectories
+        ("src/**/test.py", "src/test.py", True),
+        ("src/**/test.py", "src/lib/test.py", True),
+        ("src/**/test.py", "src/a/b/c/test.py", True),
+        # Multiple wildcards
+        ("**/*_test.py", "my_test.py", True),
+        ("**/*_test.py", "src/my_test.py", True),
+        ("services/**/*.py", "services/auth.py", True),
+        ("services/**/*.py", "services/nested/auth.py", True),
+        # Exact matches
+        ("services/auth.py", "services/auth.py", True),
+        ("services/auth.py", "services/other.py", False),
+        # Mixed patterns
+        ("**/test_*.py", "test_my.py", True),
+        ("**/test_*.py", "src/test_my.py", True),
+        ("**/*_test.py", "my_test.py", True),
+        ("**/*_test.py", "src/my_test.py", True),
+        # Edge cases
+        ("**", "anything", True),
+        ("**", "a/b/c", True),
+        ("**/**", "file", True),
+        ("**/**", "a/b/c", True),
+        # Non-matches
+        ("*.py", "file.js", False),
+        ("src/**/*.py", "file.py", False),
+        ("services/**/*.py", "lib/auth.py", False),
+    ])
+    def test_glob_match(self, pattern, path, expected):
+        """Test various glob patterns against paths."""
+        assert glob_match(pattern, path) == expected, (
+            f"Pattern '{pattern}' should {'match' if expected else 'not match'} "
+            f"path '{path}'"
+        )
 
 
 def test_validate_valid_config(temp_project):

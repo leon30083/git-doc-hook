@@ -5,6 +5,54 @@ Handles loading, validation, and default values for .git-doc-hook.yml
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import copy
+import re
+
+
+def glob_match(pattern: str, path: str) -> bool:
+    """Match a path against a glob pattern.
+
+    Supports: *, ?, ** (recursive wildcard)
+
+    Args:
+        pattern: Glob pattern (e.g., "services/**/*.py", "**/*.py")
+        path: File path to match (e.g., "services/auth.py", "main.py")
+
+    Returns:
+        True if path matches pattern
+
+    Examples:
+        >>> glob_match("services/**/*.py", "services/auth.py")
+        True
+        >>> glob_match("services/**/*.py", "services/nested/file.py")
+        True
+        >>> glob_match("**/*.py", "main.py")
+        True
+        >>> glob_match("*.py", "src/main.py")
+        False
+    """
+    # Handle leading ** specially (matches any prefix)
+    if pattern.startswith("**/"):
+        rest = pattern[3:]  # Remove **/
+        # Build: ^.* + escaped_rest (with * -> [^/]*)
+        escaped = re.escape(rest).replace(r"\*", "[^/]*").replace(r"\?", ".")
+        return bool(re.match(f'^.*{escaped}$', path))
+
+    # Standard escaping
+    regex = re.escape(pattern)
+
+    # / **/ in middle means optional subdirectories
+    regex = regex.replace(r'/\*\*/', '(?:/.*)?')
+
+    # ** at end or not followed by / means match anything
+    regex = regex.replace(r'\*\*', '.*')
+
+    # * matches any non-separator chars
+    regex = regex.replace(r'\*', '[^/]*')
+
+    # ? matches any single char
+    regex = regex.replace(r'\?', '.')
+
+    return bool(re.match(f'^{regex}$', path))
 
 
 class Config:
@@ -268,12 +316,10 @@ class Config:
         Returns:
             List of matching rules
         """
-        from fnmatch import fnmatch
-
         matching = []
         for rule in self.rules:
             rule_pattern = rule.get("pattern", "")
-            if fnmatch(pattern, rule_pattern):
+            if glob_match(rule_pattern, pattern):
                 matching.append(rule)
         return matching
 
