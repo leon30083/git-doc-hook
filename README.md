@@ -2,6 +2,8 @@
 
 > Universal Git documentation auto-update tool with MemOS integration
 
+[简体中文使用指南](docs/zh-CN.md) | English
+
 ## Overview
 
 Git-Doc-Hook is a standalone tool that automatically updates project documentation based on Git commits. It analyzes code changes, detects patterns in commit messages, and syncs technical decisions to MemOS for future reference.
